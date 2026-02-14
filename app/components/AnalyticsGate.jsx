@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Script from 'next/script';
 
-export default function AnalyticsGate({ GA_ID }) {
+export function AnalyticsGate({ GA_ID }) {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     try {

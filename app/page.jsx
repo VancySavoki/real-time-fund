@@ -1,20 +1,42 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo, useLayoutEffect, useCallback } from 'react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { createAvatar } from '@dicebear/core';
 import { glass } from '@dicebear/collection';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import Announcement from "./components/Announcement";
-import { DatePicker, DonateTabs, NumericInput, Stat } from "./components/Common";
-import { ChevronIcon, CloseIcon, CloudIcon, DragIcon, ExitIcon, EyeIcon, EyeOffIcon, GridIcon, ListIcon, LoginIcon, LogoutIcon, MailIcon, PinIcon, PinOffIcon, PlusIcon, RefreshIcon, SettingsIcon, SortIcon, StarIcon, TrashIcon, UpdateIcon, UserIcon } from "./components/Icons";
-import githubImg from "./assets/github.svg";
-import weChatGroupImg from "./assets/weChatGroup.png";
+import { Announcement, Stat, GroupSummary, Toast, Navbar } from "./components";
+import { ChevronIcon, CloseIcon, ExitIcon, GridIcon, ListIcon, LoginIcon, LogoutIcon, PlusIcon, RefreshIcon, SettingsIcon, SortIcon, StarIcon, TrashIcon, UserIcon } from "./components/Icons";
+import {
+  HoldingActionModal,
+  TradeModal,
+  HoldingEditModal,
+  AddResultModal,
+  SuccessModal,
+  CloudConfigModal,
+  ConfirmModal,
+  GroupManageModal,
+  AddFundToGroupModal,
+  GroupModal,
+  LoginModal,
+  UpdateModal,
+  SettingsModal
+} from "./components/modals";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { fetchFundData, fetchLatestRelease, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds, submitFeedback } from './api/fund';
-import packageJson from '../package.json';
+import { fetchFundData, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds } from './api/fund';
+import {
+  normalizeCode,
+  normalizeNumber,
+  getFundCodesSignature,
+  dedupeByCode,
+  getComparablePayload,
+  collectLocalPayload,
+  mergeImportData,
+  exportLocalConfig,
+  validateImportData
+} from './lib/configUtils';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -23,1860 +45,7 @@ dayjs.tz.setDefault('Asia/Shanghai');
 const TZ = 'Asia/Shanghai';
 const nowInTz = () => dayjs().tz(TZ);
 const toTz = (input) => (input ? dayjs.tz(input, TZ) : nowInTz());
-const formatDate = (input) => toTz(input).format('YYYY-MM-DD');
-
-function FeedbackModal({ onClose, user, onOpenWeChat }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [succeeded, setSucceeded] = useState(false);
-  const [error, setError] = useState("");
-
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError("");
-
-    const formData = new FormData(e.target);
-    const nickname = formData.get("nickname")?.trim();
-    if (!nickname) {
-      formData.set("nickname", "匿名");
-    }
-
-    // Web3Forms Access Key
-    formData.append("access_key", process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY || '');
-    formData.append("subject", "基估宝 - 用户反馈");
-
-    try {
-      const data = await submitFeedback(formData);
-      if (data.success) {
-        setSucceeded(true);
-      } else {
-        setError(data.message || "提交失败，请稍后再试");
-      }
-    } catch (err) {
-      setError("网络错误，请检查您的连接");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="意见反馈"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal feedback-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsIcon width="20" height="20" />
-            <span>意见反馈</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        {succeeded ? (
-          <div className="success-message" style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: '48px', marginBottom: 16 }}>🎉</div>
-            <h3 style={{ marginBottom: 8 }}>感谢您的反馈！</h3>
-            <p className="muted">我们已收到您的建议，会尽快查看。</p>
-            <button className="button" onClick={onClose} style={{ marginTop: 24, width: '100%' }}>
-              关闭
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={onSubmit} className="feedback-form">
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label htmlFor="nickname" className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                您的昵称（可选）
-              </label>
-              <input
-                id="nickname"
-                type="text"
-                name="nickname"
-                className="input"
-                placeholder="匿名"
-                style={{ width: '100%' }}
-              />
-            </div>
-            <input type="hidden" name="email" value={user?.email || ''} />
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label htmlFor="message" className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                反馈内容
-              </label>
-              <textarea
-                id="message"
-                name="message"
-                className="input"
-                required
-                placeholder="请描述您遇到的问题或建议..."
-                style={{ width: '100%', minHeight: '120px', padding: '12px', resize: 'vertical' }}
-              />
-            </div>
-            {error && (
-              <div className="error-text" style={{ marginBottom: 16, textAlign: 'center' }}>
-                {error}
-              </div>
-            )}
-
-            <button className="button" type="submit" disabled={submitting} style={{ width: '100%' }}>
-              {submitting ? '发送中...' : '提交反馈'}
-            </button>
-
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-              <p className="muted" style={{ fontSize: '12px', lineHeight: '1.6' }}>
-                如果您有 Github 账号，也可以在本项目
-                <a
-                  href="https://github.com/hzm0321/real-time-fund/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-button"
-                  style={{ color: 'var(--primary)', textDecoration: 'underline', padding: '0 4px', fontWeight: 600 }}
-                >
-                  Issues
-                </a>
-                区留言互动
-              </p>
-              <p className="muted" style={{ fontSize: '12px', lineHeight: '1.6' }}>
-                或加入我们的
-                <a
-                  className="link-button"
-                  style={{ color: 'var(--primary)', textDecoration: 'underline', padding: '0 4px', fontWeight: 600, cursor: 'pointer' }}
-                  onClick={onOpenWeChat}
-                >
-                  微信用户交流群
-                </a>
-              </p>
-            </div>
-          </form>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function WeChatModal({ onClose }) {
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="微信用户交流群"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{ zIndex: 10002 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '360px', padding: '24px' }}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span>💬 微信用户交流群</span>
-            </div>
-            <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-                <CloseIcon width="20" height="20" />
-            </button>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <img src={weChatGroupImg.src} alt="WeChat Group" style={{ maxWidth: '100%', borderRadius: '8px' }} />
-        </div>
-        <p className="muted" style={{ textAlign: 'center', marginTop: 16, fontSize: '14px' }}>
-            扫码加入群聊，获取最新更新与交流
-        </p>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function HoldingActionModal({ fund, onClose, onAction }) {
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="持仓操作"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '320px' }}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsIcon width="20" height="20" />
-            <span>持仓操作</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        <div style={{ marginBottom: 20, textAlign: 'center' }}>
-          <div className="fund-name" style={{ fontWeight: 600, fontSize: '16px', marginBottom: 4 }}>{fund?.name}</div>
-          <div className="muted" style={{ fontSize: '12px' }}>#{fund?.code}</div>
-        </div>
-
-        <div className="grid" style={{ gap: 12 }}>
-          <button className="button col-6" onClick={() => onAction('buy')} style={{ background: 'rgba(34, 211, 238, 0.1)', border: '1px solid var(--primary)', color: 'var(--primary)' }}>
-            加仓
-          </button>
-          <button className="button col-6" onClick={() => onAction('sell')} style={{ background: 'rgba(248, 113, 113, 0.1)', border: '1px solid var(--danger)', color: 'var(--danger)' }}>
-            减仓
-          </button>
-          <button className="button col-12" onClick={() => onAction('edit')} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>
-            编辑持仓
-          </button>
-          <button
-            className="button col-12"
-            onClick={() => onAction('clear')}
-            style={{
-              marginTop: 8,
-              background: 'linear-gradient(180deg, #ef4444, #f87171)',
-              border: 'none',
-              color: '#2b0b0b',
-              fontWeight: 600
-            }}
-          >
-            清空持仓
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function TradeModal({ type, fund, holding, onClose, onConfirm, pendingTrades = [], onDeletePending }) {
-  const isBuy = type === 'buy';
-  const [share, setShare] = useState('');
-  const [amount, setAmount] = useState('');
-  const [feeRate, setFeeRate] = useState('0');
-  const [date, setDate] = useState(() => {
-    return formatDate();
-  });
-  const [isAfter3pm, setIsAfter3pm] = useState(nowInTz().hour() >= 15);
-  const [calcShare, setCalcShare] = useState(null);
-
-  const currentPendingTrades = useMemo(() => {
-    return pendingTrades.filter(t => t.fundCode === fund?.code);
-  }, [pendingTrades, fund]);
-
-  const pendingSellShare = useMemo(() => {
-      return currentPendingTrades
-          .filter(t => t.type === 'sell')
-          .reduce((acc, curr) => acc + (Number(curr.share) || 0), 0);
-  }, [currentPendingTrades]);
-
-  const availableShare = holding ? Math.max(0, holding.share - pendingSellShare) : 0;
-
-  const [showPendingList, setShowPendingList] = useState(false);
-
-  // Auto-close pending list if empty
-  useEffect(() => {
-      if (showPendingList && currentPendingTrades.length === 0) {
-          setShowPendingList(false);
-      }
-  }, [showPendingList, currentPendingTrades]);
-
-  const getEstimatePrice = () => fund?.estPricedCoverage > 0.05 ? fund?.estGsz : (typeof fund?.gsz === 'number' ? fund?.gsz : Number(fund?.dwjz));
-  const [price, setPrice] = useState(getEstimatePrice());
-  const [loadingPrice, setLoadingPrice] = useState(false);
-  const [actualDate, setActualDate] = useState(null);
-
-  useEffect(() => {
-    if (date && fund?.code) {
-        setLoadingPrice(true);
-        setActualDate(null);
-
-        let queryDate = date;
-        if (isAfter3pm) {
-            queryDate = toTz(date).add(1, 'day').format('YYYY-MM-DD');
-        }
-
-        fetchSmartFundNetValue(fund.code, queryDate).then(result => {
-            if (result) {
-                setPrice(result.value);
-                setActualDate(result.date);
-            } else {
-                setPrice(0);
-                setActualDate(null);
-            }
-        }).finally(() => setLoadingPrice(false));
-    }
-  }, [date, isAfter3pm, isBuy, fund]);
-
-  const [feeMode, setFeeMode] = useState('rate'); // 'rate' | 'amount'
-  const [feeValue, setFeeValue] = useState('0'); // Stores either rate or amount depending on mode
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  // Sell logic calculations
-  const sellShare = parseFloat(share) || 0;
-  const sellPrice = parseFloat(price) || 0;
-  const sellAmount = sellShare * sellPrice;
-
-  // Calculate fee and return based on mode
-  let sellFee = 0;
-  if (feeMode === 'rate') {
-    const rate = parseFloat(feeValue) || 0;
-    sellFee = sellAmount * (rate / 100);
-  } else {
-    sellFee = parseFloat(feeValue) || 0;
-  }
-
-  const estimatedReturn = sellAmount - sellFee;
-
-  useEffect(() => {
-    if (!isBuy) return;
-    const a = parseFloat(amount);
-    const f = parseFloat(feeRate);
-    const p = parseFloat(price);
-    if (a > 0 && !isNaN(f)) {
-        if (p > 0) {
-            const netAmount = a / (1 + f / 100);
-            const s = netAmount / p;
-            setCalcShare(s.toFixed(2));
-        } else {
-            setCalcShare('待确认');
-        }
-    } else {
-      setCalcShare(null);
-    }
-  }, [isBuy, amount, feeRate, price]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (isBuy) {
-      if (!amount || !feeRate || !date || calcShare === null) return;
-      setShowConfirm(true);
-    } else {
-      if (!share || !date) return;
-      setShowConfirm(true);
-    }
-  };
-
-  const handleFinalConfirm = () => {
-      if (isBuy) {
-        onConfirm({ share: calcShare === '待确认' ? null : Number(calcShare), price: Number(price), totalCost: Number(amount), date, isAfter3pm, feeRate: Number(feeRate) });
-        return;
-      }
-      onConfirm({ share: Number(share), price: Number(price), date: actualDate || date, isAfter3pm, feeMode, feeValue });
-  };
-
-  const isValid = isBuy
-    ? (!!amount && !!feeRate && !!date && calcShare !== null)
-    : (!!share && !!date);
-
-  const handleSetShareFraction = (fraction) => {
-      if(availableShare > 0) {
-          setShare((availableShare * fraction).toFixed(2));
-      }
-  };
-
-  const [revokeTrade, setRevokeTrade] = useState(null);
-
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label={isBuy ? "加仓" : "减仓"}
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '420px' }}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '20px' }}>{isBuy ? '📥' : '📤'}</span>
-            <span>{showPendingList ? '待交易队列' : (showConfirm ? (isBuy ? '买入确认' : '卖出确认') : (isBuy ? '加仓' : '减仓'))}</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        {!showPendingList && !showConfirm && currentPendingTrades.length > 0 && (
-            <div
-                style={{
-                    marginBottom: 16,
-                    background: 'rgba(230, 162, 60, 0.1)',
-                    border: '1px solid rgba(230, 162, 60, 0.2)',
-                    borderRadius: 8,
-                    padding: '8px 12px',
-                    fontSize: '12px',
-                    color: '#e6a23c',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    cursor: 'pointer'
-                }}
-                onClick={() => setShowPendingList(true)}
-            >
-                <span>⚠️ 当前有 {currentPendingTrades.length} 笔待处理交易</span>
-                <span style={{ textDecoration: 'underline' }}>查看详情 &gt;</span>
-            </div>
-        )}
-
-        {showPendingList ? (
-            <div className="pending-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <div className="pending-list-header" style={{ position: 'sticky', top: 0, zIndex: 1, background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(6px)', paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid var(--border)' }}>
-                    <button
-                        className="button secondary"
-                        onClick={() => setShowPendingList(false)}
-                        style={{ padding: '4px 8px', fontSize: '12px' }}
-                    >
-                        &lt; 返回
-                    </button>
-                </div>
-                <div className="pending-list-items" style={{ paddingTop: 0 }}>
-                    {currentPendingTrades.map((trade, idx) => (
-                        <div key={trade.id || idx} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                            <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-                                <span style={{ fontWeight: 600, fontSize: '14px', color: trade.type === 'buy' ? 'var(--danger)' : 'var(--success)' }}>
-                                    {trade.type === 'buy' ? '买入' : '卖出'}
-                                </span>
-                                <span className="muted" style={{ fontSize: '12px' }}>{trade.date} {trade.isAfter3pm ? '(15:00后)' : ''}</span>
-                            </div>
-                            <div className="row" style={{ justifyContent: 'space-between', fontSize: '12px' }}>
-                                <span className="muted">份额/金额</span>
-                                <span>{trade.share ? `${trade.share} 份` : `¥${trade.amount}`}</span>
-                            </div>
-                            <div className="row" style={{ justifyContent: 'space-between', fontSize: '12px', marginTop: 4 }}>
-                                <span className="muted">状态</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ color: '#e6a23c' }}>等待净值更新...</span>
-                                    <button
-                                        className="button secondary"
-                                        onClick={() => setRevokeTrade(trade)}
-                                        style={{
-                                            padding: '2px 8px',
-                                            fontSize: '10px',
-                                            height: 'auto',
-                                            background: 'rgba(255,255,255,0.1)',
-                                            color: 'var(--text)'
-                                        }}
-                                    >
-                                        撤销
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        ) : (
-            <>
-        {!showConfirm && (
-        <div style={{ marginBottom: 16 }}>
-          <div className="fund-name" style={{ fontWeight: 600, fontSize: '16px', marginBottom: 4 }}>{fund?.name}</div>
-          <div className="muted" style={{ fontSize: '12px' }}>#{fund?.code}</div>
-        </div>
-        )}
-
-        {showConfirm ? (
-            isBuy ? (
-            <div style={{ fontSize: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">基金名称</span>
-                        <span style={{ fontWeight: 600 }}>{fund?.name}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">买入金额</span>
-                        <span>¥{Number(amount).toFixed(2)}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">买入费率</span>
-                        <span>{Number(feeRate).toFixed(2)}%</span>
-                    </div>
-                     <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">参考净值</span>
-                        <span>{loadingPrice ? '查询中...' : (price ? `¥${Number(price).toFixed(4)}` : '待查询 (加入队列)')}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">预估份额</span>
-                        <span>{calcShare === '待确认' ? '待确认' : `${Number(calcShare).toFixed(2)} 份`}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">买入日期</span>
-                        <span>{date}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 8 }}>
-                        <span className="muted">交易时段</span>
-                        <span>{isAfter3pm ? '15:00后' : '15:00前'}</span>
-                    </div>
-                    <div className="muted" style={{ fontSize: '12px', textAlign: 'right', marginTop: 4 }}>
-                        {loadingPrice ? '正在获取该日净值...' : `*基于${price === getEstimatePrice() ? '当前净值/估值' : '当日净值'}测算`}
-                    </div>
-                </div>
-
-                {holding && calcShare !== '待确认' && (
-                    <div style={{ marginBottom: 20 }}>
-                        <div className="muted" style={{ marginBottom: 8, fontSize: '12px' }}>持仓变化预览</div>
-                        <div className="row" style={{ gap: 12 }}>
-                            <div style={{ flex: 1, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                                <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>持有份额</div>
-                                <div style={{ fontSize: '12px' }}>
-                                    <span style={{ opacity: 0.7 }}>{holding.share.toFixed(2)}</span>
-                                    <span style={{ margin: '0 4px' }}>→</span>
-                                    <span style={{ fontWeight: 600 }}>{(holding.share + Number(calcShare)).toFixed(2)}</span>
-                                </div>
-                            </div>
-                            {price ? (
-                                <div style={{ flex: 1, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                                    <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>持有市值 (估)</div>
-                                    <div style={{ fontSize: '12px' }}>
-                                        <span style={{ opacity: 0.7 }}>¥{(holding.share * Number(price)).toFixed(2)}</span>
-                                        <span style={{ margin: '0 4px' }}>→</span>
-                                        <span style={{ fontWeight: 600 }}>¥{((holding.share + Number(calcShare)) * Number(price)).toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-                    </div>
-                )}
-
-                <div className="row" style={{ gap: 12 }}>
-                    <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => setShowConfirm(false)}
-                        style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}
-                    >
-                        返回修改
-                    </button>
-                    <button
-                        type="button"
-                        className="button"
-                        onClick={handleFinalConfirm}
-                        disabled={loadingPrice}
-                        style={{ flex: 1, background: 'var(--primary)', opacity: loadingPrice ? 0.6 : 1, color: '#05263b' }}
-                    >
-                        {loadingPrice ? '请稍候' : (price ? '确认买入' : '加入待处理队列')}
-                    </button>
-                </div>
-            </div>
-            ) : (
-            <div style={{ fontSize: '14px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">基金名称</span>
-                        <span style={{ fontWeight: 600 }}>{fund?.name}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">卖出份额</span>
-                        <span>{sellShare.toFixed(2)} 份</span>
-                    </div>
-                     <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">预估卖出单价</span>
-                        <span>{loadingPrice ? '查询中...' : (price ? `¥${sellPrice.toFixed(4)}` : '待查询 (加入队列)')}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">卖出费率/费用</span>
-                        <span>{feeMode === 'rate' ? `${feeValue}%` : `¥${feeValue}`}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">预估手续费</span>
-                        <span>{price ? `¥${sellFee.toFixed(2)}` : '待计算'}</span>
-                    </div>
-                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-                        <span className="muted">卖出日期</span>
-                        <span>{date}</span>
-                    </div>
-                     <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 8 }}>
-                        <span className="muted">预计回款</span>
-                        <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{loadingPrice ? '计算中...' : (price ? `¥${estimatedReturn.toFixed(2)}` : '待计算')}</span>
-                    </div>
-                    <div className="muted" style={{ fontSize: '12px', textAlign: 'right', marginTop: 4 }}>
-                        {loadingPrice ? '正在获取该日净值...' : `*基于${price === getEstimatePrice() ? '当前净值/估值' : '当日净值'}测算`}
-                    </div>
-                </div>
-
-                {holding && (
-                    <div style={{ marginBottom: 20 }}>
-                        <div className="muted" style={{ marginBottom: 8, fontSize: '12px' }}>持仓变化预览</div>
-                        <div className="row" style={{ gap: 12 }}>
-                            <div style={{ flex: 1, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                                <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>持有份额</div>
-                                <div style={{ fontSize: '12px' }}>
-                                    <span style={{ opacity: 0.7 }}>{holding.share.toFixed(2)}</span>
-                                    <span style={{ margin: '0 4px' }}>→</span>
-                                    <span style={{ fontWeight: 600 }}>{(holding.share - sellShare).toFixed(2)}</span>
-                                </div>
-                            </div>
-                            {price ? (
-                                <div style={{ flex: 1, background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8 }}>
-                                    <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>持有市值 (估)</div>
-                                    <div style={{ fontSize: '12px' }}>
-                                        <span style={{ opacity: 0.7 }}>¥{(holding.share * sellPrice).toFixed(2)}</span>
-                                        <span style={{ margin: '0 4px' }}>→</span>
-                                        <span style={{ fontWeight: 600 }}>¥{((holding.share - sellShare) * sellPrice).toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-                    </div>
-                )}
-
-                <div className="row" style={{ gap: 12 }}>
-                    <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => setShowConfirm(false)}
-                        style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}
-                    >
-                        返回修改
-                    </button>
-                    <button
-                        type="button"
-                        className="button"
-                        onClick={handleFinalConfirm}
-                        disabled={loadingPrice}
-                        style={{ flex: 1, background: 'var(--danger)', opacity: loadingPrice ? 0.6 : 1 }}
-                    >
-                        {loadingPrice ? '请稍候' : (price ? '确认卖出' : '加入待处理队列')}
-                    </button>
-                </div>
-            </div>
-            )
-        ) : (
-        <form onSubmit={handleSubmit}>
-          {isBuy ? (
-            <>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  加仓金额 (¥) <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <div style={{ border: !amount ? '1px solid var(--danger)' : '1px solid var(--border)', borderRadius: 12 }}>
-                  <NumericInput
-                    value={amount}
-                    onChange={setAmount}
-                    step={100}
-                    min={0}
-                    placeholder="请输入加仓金额"
-                  />
-                </div>
-              </div>
-
-              <div className="row" style={{ gap: 12, marginBottom: 16 }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                    买入费率 (%) <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <div style={{ border: !feeRate ? '1px solid var(--danger)' : '1px solid var(--border)', borderRadius: 12 }}>
-                    <NumericInput
-                      value={feeRate}
-                      onChange={setFeeRate}
-                      step={0.01}
-                      min={0}
-                      placeholder="0.12"
-                    />
-                  </div>
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                    加仓日期 <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <DatePicker value={date} onChange={setDate} />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 12 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  交易时段
-                </label>
-                <div className="row" style={{ gap: 8, background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '4px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsAfter3pm(false)}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      background: !isAfter3pm ? 'var(--primary)' : 'transparent',
-                      color: !isAfter3pm ? '#05263b' : 'var(--muted)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      padding: '6px 8px'
-                    }}
-                  >
-                    15:00前
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAfter3pm(true)}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      background: isAfter3pm ? 'var(--primary)' : 'transparent',
-                      color: isAfter3pm ? '#05263b' : 'var(--muted)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      padding: '6px 8px'
-                    }}
-                  >
-                    15:00后
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 12, fontSize: '12px' }}>
-                {loadingPrice ? (
-                    <span className="muted">正在查询净值数据...</span>
-                ) : price === 0 ? null : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span className="muted">参考净值: {Number(price).toFixed(4)}</span>
-                    </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  卖出份额 <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <div style={{ border: !share ? '1px solid var(--danger)' : '1px solid var(--border)', borderRadius: 12 }}>
-                  <NumericInput
-                    value={share}
-                    onChange={setShare}
-                    step={1}
-                    min={0}
-                    placeholder={holding ? `最多可卖 ${availableShare.toFixed(2)} 份` : "请输入卖出份额"}
-                  />
-                </div>
-                {holding && holding.share > 0 && (
-                   <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                       {[
-                           { label: '1/4', value: 0.25 },
-                           { label: '1/3', value: 1/3 },
-                           { label: '1/2', value: 0.5 },
-                           { label: '全部', value: 1 }
-                       ].map((opt) => (
-                           <button
-                               key={opt.label}
-                               type="button"
-                               onClick={() => handleSetShareFraction(opt.value)}
-                               style={{
-                                   flex: 1,
-                                   padding: '4px 8px',
-                                   fontSize: '12px',
-                                   background: 'rgba(255,255,255,0.1)',
-                                   border: 'none',
-                                   borderRadius: '4px',
-                                   color: 'var(--text)',
-                                   cursor: 'pointer'
-                               }}
-                           >
-                               {opt.label}
-                           </button>
-                       ))}
-                   </div>
-                )}
-                 {holding && (
-                    <div className="muted" style={{ fontSize: '12px', marginTop: 6 }}>
-                        当前持仓: {holding.share.toFixed(2)} 份 {pendingSellShare > 0 && <span style={{color: '#e6a23c', marginLeft: 8}}>冻结: {pendingSellShare.toFixed(2)} 份</span>}
-                    </div>
-                )}
-              </div>
-
-              <div className="row" style={{ gap: 12, marginBottom: 16 }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <label className="muted" style={{ fontSize: '14px' }}>
-                      {feeMode === 'rate' ? '卖出费率 (%)' : '卖出费用 (¥)'}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                          setFeeMode(m => m === 'rate' ? 'amount' : 'rate');
-                          setFeeValue('0');
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--primary)',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        padding: 0
-                      }}
-                    >
-                      切换为{feeMode === 'rate' ? '金额' : '费率'}
-                    </button>
-                  </div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 12 }}>
-                    <NumericInput
-                      value={feeValue}
-                      onChange={setFeeValue}
-                      step={feeMode === 'rate' ? 0.01 : 1}
-                      min={0}
-                      placeholder={feeMode === 'rate' ? "0.00" : "0.00"}
-                    />
-                  </div>
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                    卖出日期 <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <DatePicker value={date} onChange={setDate} />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 12 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  交易时段
-                </label>
-                <div className="row" style={{ gap: 8, background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '4px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsAfter3pm(false)}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      background: !isAfter3pm ? 'var(--primary)' : 'transparent',
-                      color: !isAfter3pm ? '#05263b' : 'var(--muted)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      padding: '6px 8px'
-                    }}
-                  >
-                    15:00前
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAfter3pm(true)}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      background: isAfter3pm ? 'var(--primary)' : 'transparent',
-                      color: isAfter3pm ? '#05263b' : 'var(--muted)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      padding: '6px 8px'
-                    }}
-                  >
-                    15:00后
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 12, fontSize: '12px' }}>
-                {loadingPrice ? (
-                    <span className="muted">正在查询净值数据...</span>
-                ) : price === 0 ? null : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span className="muted">参考净值: {price.toFixed(4)}</span>
-                    </div>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="row" style={{ gap: 12, marginTop: 12 }}>
-            <button type="button" className="button secondary" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>取消</button>
-            <button
-              type="submit"
-              className="button"
-              disabled={!isValid || loadingPrice}
-              style={{ flex: 1, opacity: (!isValid || loadingPrice) ? 0.6 : 1 }}
-            >
-              确定
-            </button>
-          </div>
-        </form>
-      )}
-              </>
-            )}
-      </motion.div>
-      <AnimatePresence>
-        {revokeTrade && (
-          <ConfirmModal
-            key="revoke-confirm"
-            title="撤销交易"
-            message={`确定要撤销这笔 ${revokeTrade.share ? `${revokeTrade.share}份` : `¥${revokeTrade.amount}`} 的${revokeTrade.type === 'buy' ? '买入' : '卖出'}申请吗？`}
-            onConfirm={() => {
-                onDeletePending?.(revokeTrade.id);
-                setRevokeTrade(null);
-            }}
-            onCancel={() => setRevokeTrade(null)}
-            confirmText="确认撤销"
-          />
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-function HoldingEditModal({ fund, holding, onClose, onSave }) {
-  const [mode, setMode] = useState('amount'); // 'amount' | 'share'
-
-  // 基础数据
-  const dwjz = fund?.dwjz || fund?.gsz || 0;
-
-  // 表单状态
-  const [share, setShare] = useState('');
-  const [cost, setCost] = useState('');
-  const [amount, setAmount] = useState('');
-  const [profit, setProfit] = useState('');
-
-  // 初始化数据
-  useEffect(() => {
-    if (holding) {
-      const s = holding.share || 0;
-      const c = holding.cost || 0;
-      setShare(String(s));
-      setCost(String(c));
-
-      if (dwjz > 0) {
-        const a = s * dwjz;
-        const p = (dwjz - c) * s;
-        setAmount(a.toFixed(2));
-        setProfit(p.toFixed(2));
-      }
-    }
-  }, [holding, fund]);
-
-  // 切换模式时同步数据
-  const handleModeChange = (newMode) => {
-    if (newMode === mode) return;
-    setMode(newMode);
-
-    if (newMode === 'share') {
-      // 从金额/收益 -> 份额/成本
-      if (amount && dwjz > 0) {
-        const a = parseFloat(amount);
-        const p = parseFloat(profit || 0);
-        const s = a / dwjz;
-        const principal = a - p;
-        const c = s > 0 ? principal / s : 0;
-
-        setShare(s.toFixed(2)); // 保留2位小数，或者更多？基金份额通常2位
-        setCost(c.toFixed(4));
-      }
-    } else {
-      // 从份额/成本 -> 金额/收益
-      if (share && dwjz > 0) {
-        const s = parseFloat(share);
-        const c = parseFloat(cost || 0);
-        const a = s * dwjz;
-        const p = (dwjz - c) * s;
-
-        setAmount(a.toFixed(2));
-        setProfit(p.toFixed(2));
-      }
-    }
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    let finalShare = 0;
-    let finalCost = 0;
-
-    if (mode === 'share') {
-      if (!share || !cost) return;
-      finalShare = Number(Number(share).toFixed(2));
-      finalCost = Number(cost);
-    } else {
-      if (!amount || !dwjz) return;
-      const a = Number(amount);
-      const p = Number(profit || 0);
-      const rawShare = a / dwjz;
-      finalShare = Number(rawShare.toFixed(2));
-      const principal = a - p;
-      finalCost = finalShare > 0 ? principal / finalShare : 0;
-    }
-
-    onSave({
-      share: finalShare,
-      cost: finalCost
-    });
-    onClose();
-  };
-
-  const isValid = mode === 'share'
-    ? (share && cost && !isNaN(share) && !isNaN(cost))
-    : (amount && !isNaN(amount) && (!profit || !isNaN(profit)) && dwjz > 0);
-
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="编辑持仓"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '400px' }}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsIcon width="20" height="20" />
-            <span>设置持仓</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <div className="fund-name" style={{ fontWeight: 600, fontSize: '16px', marginBottom: 4 }}>{fund?.name}</div>
-          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="muted" style={{ fontSize: '12px' }}>#{fund?.code}</div>
-            <div className="badge" style={{ fontSize: '12px' }}>
-              最新净值：<span style={{ fontWeight: 600, color: 'var(--primary)' }}>{dwjz}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="tabs-container" style={{ marginBottom: 20, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 12 }}>
-          <div className="row" style={{ gap: 0 }}>
-            <button
-              type="button"
-              className={`tab ${mode === 'amount' ? 'active' : ''}`}
-              onClick={() => handleModeChange('amount')}
-              style={{ flex: 1, justifyContent: 'center', height: 32, borderRadius: 8 }}
-            >
-              按金额
-            </button>
-            <button
-              type="button"
-              className={`tab ${mode === 'share' ? 'active' : ''}`}
-              onClick={() => handleModeChange('share')}
-              style={{ flex: 1, justifyContent: 'center', height: 32, borderRadius: 8 }}
-            >
-              按份额
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          {mode === 'amount' ? (
-            <>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  持有金额 <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className={`input ${!amount ? 'error' : ''}`}
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="请输入持有总金额"
-                  style={{
-                    width: '100%',
-                    border: !amount ? '1px solid var(--danger)' : undefined
-                  }}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  持有收益
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className="input"
-                  value={profit}
-                  onChange={(e) => setProfit(e.target.value)}
-                  placeholder="请输入持有总收益 (可为负)"
-                  style={{ width: '100%' }}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  持有份额 <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className={`input ${!share ? 'error' : ''}`}
-                  value={share}
-                  onChange={(e) => setShare(e.target.value)}
-                  placeholder="请输入持有份额"
-                  style={{
-                    width: '100%',
-                    border: !share ? '1px solid var(--danger)' : undefined
-                  }}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
-                  持仓成本价 <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className={`input ${!cost ? 'error' : ''}`}
-                  value={cost}
-                  onChange={(e) => setCost(e.target.value)}
-                  placeholder="请输入持仓成本价"
-                  style={{
-                    width: '100%',
-                    border: !cost ? '1px solid var(--danger)' : undefined
-                  }}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="row" style={{ gap: 12 }}>
-            <button type="button" className="button secondary" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>取消</button>
-            <button
-              type="submit"
-              className="button"
-              disabled={!isValid}
-              style={{ flex: 1, opacity: isValid ? 1 : 0.6 }}
-            >
-              保存
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function AddResultModal({ failures, onClose }) {
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="添加结果"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 12, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsIcon width="20" height="20" />
-            <span>部分基金添加失败</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-        <div className="muted" style={{ marginBottom: 12, fontSize: '14px' }}>
-          未获取到估值数据的基金如下：
-        </div>
-        <div className="list">
-          {failures.map((it, idx) => (
-            <div className="item" key={idx}>
-              <span className="name">{it.name || '未知名称'}</span>
-              <div className="values">
-                <span className="badge">#{it.code}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-          <button className="button" onClick={onClose}>知道了</button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function SuccessModal({ message, onClose }) {
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="成功提示"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="success-message" style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ fontSize: '48px', marginBottom: 16 }}>🎉</div>
-          <h3 style={{ marginBottom: 8 }}>{message}</h3>
-          <p className="muted">操作已完成，您可以继续使用。</p>
-          <button className="button" onClick={onClose} style={{ marginTop: 24, width: '100%' }}>
-            关闭
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function CloudConfigModal({ onConfirm, onCancel, type = 'empty' }) {
-  const isConflict = type === 'conflict';
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label={isConflict ? "配置冲突提示" : "云端同步提示"}
-      onClick={isConflict ? undefined : onCancel}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        style={{ maxWidth: '420px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 12, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CloudIcon width="20" height="20" />
-            <span>{isConflict ? '发现配置冲突' : '云端暂无配置'}</span>
-          </div>
-          {!isConflict && (
-            <button className="icon-button" onClick={onCancel} style={{ border: 'none', background: 'transparent' }}>
-              <CloseIcon width="20" height="20" />
-            </button>
-          )}
-        </div>
-        <p className="muted" style={{ marginBottom: 20, fontSize: '14px', lineHeight: '1.6' }}>
-          {isConflict
-            ? '检测到本地配置与云端不一致，请选择操作：'
-            : '是否将本地配置同步到云端？'}
-        </p>
-        <div className="row" style={{ flexDirection: 'column', gap: 12 }}>
-          <button className="button" onClick={onConfirm}>
-            {isConflict ? '保留本地 (覆盖云端)' : '同步本地到云端'}
-          </button>
-          <button className="button secondary" onClick={onCancel}>
-            {isConflict ? '使用云端 (覆盖本地)' : '暂不同步'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function ConfirmModal({ title, message, onConfirm, onCancel, confirmText = "确定删除" }) {
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        e.stopPropagation();
-        onCancel();
-      }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{ zIndex: 10002 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        style={{ maxWidth: '400px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 12 }}>
-          <TrashIcon width="20" height="20" className="danger" />
-          <span>{title}</span>
-        </div>
-        <p className="muted" style={{ marginBottom: 24, fontSize: '14px', lineHeight: '1.6' }}>
-          {message}
-        </p>
-        <div className="row" style={{ gap: 12 }}>
-          <button className="button secondary" onClick={onCancel} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>取消</button>
-          <button className="button danger" onClick={onConfirm} style={{ flex: 1 }}>{confirmText}</button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function GroupManageModal({ groups, onClose, onSave }) {
-  const [items, setItems] = useState(groups);
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name }
-
-  const handleReorder = (newOrder) => {
-    setItems(newOrder);
-  };
-
-  const handleRename = (id, newName) => {
-    const truncatedName = (newName || '').slice(0, 8);
-    setItems(prev => prev.map(item => item.id === id ? { ...item, name: truncatedName } : item));
-  };
-
-  const handleDeleteClick = (id, name) => {
-    const itemToDelete = items.find(it => it.id === id);
-    const isNew = !groups.find(g => g.id === id);
-    const isEmpty = itemToDelete && (!itemToDelete.codes || itemToDelete.codes.length === 0);
-
-    if (isNew || isEmpty) {
-      setItems(prev => prev.filter(item => item.id !== id));
-    } else {
-      setDeleteConfirm({ id, name });
-    }
-  };
-
-  const handleConfirmDelete = () => {
-    if (deleteConfirm) {
-      setItems(prev => prev.filter(item => item.id !== deleteConfirm.id));
-      setDeleteConfirm(null);
-    }
-  };
-
-  const handleAddRow = () => {
-    const newGroup = {
-      id: `group_${nowInTz().valueOf()}`,
-      name: '',
-      codes: []
-    };
-    setItems(prev => [...prev, newGroup]);
-  };
-
-  const handleConfirm = () => {
-    const hasEmpty = items.some(it => !it.name.trim());
-    if (hasEmpty) return;
-    onSave(items);
-    onClose();
-  };
-
-  const isAllValid = items.every(it => it.name.trim() !== '');
-
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="管理分组"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        style={{ maxWidth: '500px', width: '90vw' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsIcon width="20" height="20" />
-            <span>管理分组</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        <div className="group-manage-list-container" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '4px' }}>
-          {items.length === 0 ? (
-            <div className="empty-state muted" style={{ textAlign: 'center', padding: '40px 0' }}>
-              <div style={{ fontSize: '32px', marginBottom: 12, opacity: 0.5 }}>📂</div>
-              <p>暂无自定义分组</p>
-            </div>
-          ) : (
-            <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="group-manage-list">
-              <AnimatePresence mode="popLayout">
-                {items.map((item) => (
-                  <Reorder.Item
-                    key={item.id}
-                    value={item}
-                    className="group-manage-item glass"
-                    layout
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 500,
-                      damping: 35,
-                      mass: 1,
-                      layout: { duration: 0.2 }
-                    }}
-                  >
-                    <div className="drag-handle" style={{ cursor: 'grab', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-                      <DragIcon width="18" height="18" className="muted" />
-                    </div>
-                    <input
-                      className={`input group-rename-input ${!item.name.trim() ? 'error' : ''}`}
-                      value={item.name}
-                      onChange={(e) => handleRename(item.id, e.target.value)}
-                      placeholder="请输入分组名称..."
-                      style={{
-                        flex: 1,
-                        height: '36px',
-                        background: 'rgba(0,0,0,0.2)',
-                        border: !item.name.trim() ? '1px solid var(--danger)' : 'none'
-                      }}
-                    />
-                    <button
-                      className="icon-button danger"
-                      onClick={() => handleDeleteClick(item.id, item.name)}
-                      title="删除分组"
-                      style={{ width: '36px', height: '36px', flexShrink: 0 }}
-                    >
-                      <TrashIcon width="16" height="16" />
-                    </button>
-                  </Reorder.Item>
-                ))}
-              </AnimatePresence>
-            </Reorder.Group>
-          )}
-          <button
-            className="add-group-row-btn"
-            onClick={handleAddRow}
-            style={{
-              width: '100%',
-              marginTop: 12,
-              padding: '10px',
-              borderRadius: '12px',
-              border: '1px dashed var(--border)',
-              background: 'rgba(255,255,255,0.02)',
-              color: 'var(--muted)',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <PlusIcon width="16" height="16" />
-            <span>新增分组</span>
-          </button>
-        </div>
-
-        <div style={{ marginTop: 24 }}>
-          {!isAllValid && (
-            <div className="error-text" style={{ marginBottom: 12, textAlign: 'center' }}>
-              所有分组名称均不能为空
-            </div>
-          )}
-          <button
-            className="button"
-            onClick={handleConfirm}
-            disabled={!isAllValid}
-            style={{ width: '100%', opacity: isAllValid ? 1 : 0.6 }}
-          >
-            完成
-          </button>
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        {deleteConfirm && (
-          <ConfirmModal
-            title="删除确认"
-            message={`确定要删除分组 "${deleteConfirm.name}" 吗？分组内的基金不会被删除。`}
-            onConfirm={handleConfirmDelete}
-            onCancel={() => setDeleteConfirm(null)}
-          />
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-function AddFundToGroupModal({ allFunds, currentGroupCodes, onClose, onAdd }) {
-  const [selected, setSelected] = useState(new Set());
-
-  // 过滤出未在当前分组中的基金
-  const availableFunds = (allFunds || []).filter(f => !(currentGroupCodes || []).includes(f.code));
-
-  const toggleSelect = (code) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        style={{ maxWidth: '500px', width: '90vw' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <PlusIcon width="20" height="20" />
-            <span>添加基金到分组</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-
-        <div className="group-manage-list-container" style={{ maxHeight: '50vh', overflowY: 'auto', paddingRight: '4px' }}>
-          {availableFunds.length === 0 ? (
-            <div className="empty-state muted" style={{ textAlign: 'center', padding: '40px 0' }}>
-              <p>所有基金已在该分组中</p>
-            </div>
-          ) : (
-            <div className="group-manage-list">
-              {availableFunds.map((fund) => (
-                <div
-                  key={fund.code}
-                  className={`group-manage-item glass ${selected.has(fund.code) ? 'selected' : ''}`}
-                  onClick={() => toggleSelect(fund.code)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="checkbox" style={{ marginRight: 12 }}>
-                    {selected.has(fund.code) && <div className="checked-mark" />}
-                  </div>
-                  <div className="fund-info" style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{fund.name}</div>
-                    <div className="muted" style={{ fontSize: '12px' }}>#{fund.code}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="row" style={{ marginTop: 24, gap: 12 }}>
-          <button className="button secondary" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>取消</button>
-          <button
-            className="button"
-            onClick={() => onAdd(Array.from(selected))}
-            disabled={selected.size === 0}
-            style={{ flex: 1 }}
-          >
-            确定 ({selected.size})
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function GroupModal({ onClose, onConfirm }) {
-  const [name, setName] = useState('');
-  return (
-    <motion.div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="新增分组"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass card modal"
-        style={{ maxWidth: '400px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <PlusIcon width="20" height="20" />
-            <span>新增分组</span>
-          </div>
-          <button className="icon-button" onClick={onClose} style={{ border: 'none', background: 'transparent' }}>
-            <CloseIcon width="20" height="20" />
-          </button>
-        </div>
-        <div className="form-group" style={{ marginBottom: 20 }}>
-          <label className="muted" style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>分组名称（最多 8 个字）</label>
-          <input
-            className="input"
-            autoFocus
-            placeholder="请输入分组名称..."
-            value={name}
-            onChange={(e) => {
-              const v = e.target.value || '';
-              // 限制最多 8 个字符（兼容中英文），超出部分自动截断
-              setName(v.slice(0, 8));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && name.trim()) onConfirm(name.trim());
-            }}
-          />
-        </div>
-        <div className="row" style={{ gap: 12 }}>
-          <button className="button secondary" onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}>取消</button>
-          <button className="button" onClick={() => name.trim() && onConfirm(name.trim())} disabled={!name.trim()} style={{ flex: 1 }}>确定</button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// 数字滚动组件
-function CountUp({ value, prefix = '', suffix = '', decimals = 2, className = '', style = {} }) {
-  const [displayValue, setDisplayValue] = useState(value);
-  const previousValue = useRef(value);
-
-  useEffect(() => {
-    if (previousValue.current === value) return;
-
-    const start = previousValue.current;
-    const end = value;
-    const duration = 600; // 0.6秒动画
-    const startTime = performance.now();
-
-    const animate = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // easeOutQuart
-      const ease = 1 - Math.pow(1 - progress, 4);
-
-      const current = start + (end - start) * ease;
-      setDisplayValue(current);
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        previousValue.current = value;
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }, [value]);
-
-  return (
-    <span className={className} style={style}>
-      {prefix}{Math.abs(displayValue).toFixed(decimals)}{suffix}
-    </span>
-  );
-}
-
-function GroupSummary({ funds, holdings, groupName, getProfit }) {
-  const [showPercent, setShowPercent] = useState(true);
-  const [isMasked, setIsMasked] = useState(false);
-  const [isSticky, setIsSticky] = useState(false);
-  const rowRef = useRef(null);
-  const [assetSize, setAssetSize] = useState(24);
-  const [metricSize, setMetricSize] = useState(18);
-  const [winW, setWinW] = useState(0);
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setWinW(window.innerWidth);
-      const onR = () => setWinW(window.innerWidth);
-      window.addEventListener('resize', onR);
-      return () => window.removeEventListener('resize', onR);
-    }
-  }, []);
-
-  const summary = useMemo(() => {
-    let totalAsset = 0;
-    let totalProfitToday = 0;
-    let totalHoldingReturn = 0;
-    let totalCost = 0;
-    let hasHolding = false;
-
-    funds.forEach(fund => {
-      const holding = holdings[fund.code];
-      const profit = getProfit(fund, holding);
-
-      if (profit) {
-        hasHolding = true;
-        totalAsset += profit.amount;
-        totalProfitToday += profit.profitToday;
-        if (profit.profitTotal !== null) {
-          totalHoldingReturn += profit.profitTotal;
-          if (holding && typeof holding.cost === 'number' && typeof holding.share === 'number') {
-            totalCost += holding.cost * holding.share;
-          }
-        }
-      }
-    });
-
-    const returnRate = totalCost > 0 ? (totalHoldingReturn / totalCost) * 100 : 0;
-
-    return { totalAsset, totalProfitToday, totalHoldingReturn, hasHolding, returnRate };
-  }, [funds, holdings, getProfit]);
-
-  useLayoutEffect(() => {
-    const el = rowRef.current;
-    if (!el) return;
-    const height = el.clientHeight;
-    // 使用 80px 作为更严格的阈值，因为 margin/padding 可能导致实际占用更高
-    const tooTall = height > 80;
-    if (tooTall) {
-      setAssetSize(s => Math.max(16, s - 1));
-      setMetricSize(s => Math.max(12, s - 1));
-    } else {
-      // 如果高度正常，尝试适当恢复字体大小，但不要超过初始值
-      // 这里的逻辑可以优化：如果当前远小于阈值，可以尝试增大，但为了稳定性，主要处理缩小的场景
-      // 或者：如果高度非常小（例如远小于80），可以尝试+1，但要小心死循环
-    }
-  }, [winW, summary.totalAsset, summary.totalProfitToday, summary.totalHoldingReturn, summary.returnRate, showPercent, assetSize, metricSize]); // 添加 assetSize, metricSize 到依赖，确保逐步缩小生效
-
-  if (!summary.hasHolding) return null;
-
-  return (
-    <div className={isSticky ? "group-summary-sticky" : ""}>
-    <div className="glass card group-summary-card" style={{ marginBottom: 8, padding: '16px 20px', background: 'rgba(255, 255, 255, 0.03)', position: 'relative' }}>
-      <span
-        className="sticky-toggle-btn"
-        onClick={() => setIsSticky(!isSticky)}
-        style={{
-          position: 'absolute',
-          top: 4,
-          right: 4,
-          width: 24,
-          height: 24,
-          padding: 4,
-          opacity: 0.6,
-          zIndex: 10,
-          color: 'var(--muted)'
-        }}
-      >
-        {isSticky ? <PinIcon width="14" height="14" /> : <PinOffIcon width="14" height="14" />}
-      </span>
-      <div ref={rowRef} className="row" style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <div className="muted" style={{ fontSize: '12px' }}>{groupName}</div>
-            <button
-              className="fav-button"
-              onClick={() => setIsMasked(value => !value)}
-              aria-label={isMasked ? '显示资产' : '隐藏资产'}
-              style={{ margin: 0, padding: 2, display: 'inline-flex', alignItems: 'center' }}
-            >
-              {isMasked ? <EyeOffIcon width="16" height="16" /> : <EyeIcon width="16" height="16" />}
-            </button>
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-            <span style={{ fontSize: '16px', marginRight: 2 }}>¥</span>
-            {isMasked ? (
-              <span style={{ fontSize: assetSize, position: 'relative', top: 4 }}>******</span>
-            ) : (
-              <CountUp value={summary.totalAsset} style={{ fontSize: assetSize }} />
-            )}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 24 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>当日收益</div>
-            <div
-              className={summary.totalProfitToday > 0 ? 'up' : summary.totalProfitToday < 0 ? 'down' : ''}
-              style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
-            >
-              {isMasked ? (
-                <span style={{ fontSize: metricSize }}>******</span>
-              ) : (
-                <>
-                  <span style={{ marginRight: 1 }}>{summary.totalProfitToday > 0 ? '+' : summary.totalProfitToday < 0 ? '-' : ''}</span>
-                  <CountUp value={Math.abs(summary.totalProfitToday)} style={{ fontSize: metricSize }} />
-                </>
-              )}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>持有收益{showPercent ? '(%)' : ''}</div>
-            <div
-              className={summary.totalHoldingReturn > 0 ? 'up' : summary.totalHoldingReturn < 0 ? 'down' : ''}
-              style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--font-mono)', cursor: 'pointer' }}
-              onClick={() => setShowPercent(!showPercent)}
-              title="点击切换金额/百分比"
-            >
-              {isMasked ? (
-                <span style={{ fontSize: metricSize }}>******</span>
-              ) : (
-                <>
-                  <span style={{ marginRight: 1 }}>{summary.totalHoldingReturn > 0 ? '+' : summary.totalHoldingReturn < 0 ? '-' : ''}</span>
-                  {showPercent ? (
-                    <CountUp value={Math.abs(summary.returnRate)} suffix="%" style={{ fontSize: metricSize }} />
-                  ) : (
-                    <CountUp value={Math.abs(summary.totalHoldingReturn)} style={{ fontSize: metricSize }} />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div>
-  );
-}
+const formatDate = (input) => toTz(input).format("YYYY-MM-DD");
 
 export default function HomePage() {
   const [funds, setFunds] = useState([]);
@@ -1887,7 +56,7 @@ export default function HomePage() {
   const isLoggingOutRef = useRef(false);
 
   // 刷新频率状态
-  const [refreshMs, setRefreshMs] = useState(30000);
+  const [refreshMs, setRefreshMs] = useState(300000);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempSeconds, setTempSeconds] = useState(30);
 
@@ -1915,13 +84,7 @@ export default function HomePage() {
 
   // 用户认证状态
   const [user, setUser] = useState(null);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [loginSuccess, setLoginSuccess] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
 
   const userAvatar = useMemo(() => {
     if (!user?.id) return '';
@@ -1930,11 +93,6 @@ export default function HomePage() {
       size: 80
     }).toDataUri();
   }, [user?.id]);
-
-  // 反馈弹窗状态
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackNonce, setFeedbackNonce] = useState(0);
-  const [weChatOpen, setWeChatOpen] = useState(false);
 
   // 搜索相关状态
   const [searchTerm, setSearchTerm] = useState('');
@@ -1950,7 +108,6 @@ export default function HomePage() {
   const [actionModal, setActionModal] = useState({ open: false, fund: null });
   const [tradeModal, setTradeModal] = useState({ open: false, fund: null, type: 'buy' }); // type: 'buy' | 'sell'
   const [clearConfirm, setClearConfirm] = useState(null); // { fund }
-  const [donateOpen, setDonateOpen] = useState(false);
   const [holdings, setHoldings] = useState({}); // { [code]: { share: number, cost: number } }
   const [pendingTrades, setPendingTrades] = useState([]); // [{ id, fundCode, share, date, ... }]
   const [percentModes, setPercentModes] = useState({}); // { [code]: boolean }
@@ -1980,32 +137,8 @@ export default function HomePage() {
     }
   }, []);
 
-  // 检查更新
-  const [hasUpdate, setHasUpdate] = useState(false);
-  const [latestVersion, setLatestVersion] = useState('');
-  const [updateContent, setUpdateContent] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    const checkUpdate = async () => {
-      try {
-        const data = await fetchLatestRelease();
-        if (!data?.tagName) return;
-        const remoteVersion = data.tagName.replace(/^v/, '');
-        if (remoteVersion !== packageJson.version) {
-          setHasUpdate(true);
-          setLatestVersion(remoteVersion);
-          setUpdateContent(data.body || '');
-        }
-      } catch (e) {
-        console.error('Check update failed:', e);
-      }
-    };
-
-    checkUpdate();
-    const interval = setInterval(checkUpdate, 10 * 60 * 1000); // 10 minutes
-    return () => clearInterval(interval);
-  }, []);
 
   // 存储当前被划开的基金代码
   const [swipedFundCode, setSwipedFundCode] = useState(null);
@@ -2378,7 +511,6 @@ export default function HomePage() {
   };
 
   const handleOpenLogin = () => {
-    setUserMenuOpen(false);
     if (!isSupabaseConfigured) {
       showToast('未配置 Supabase，无法登录', 'error');
       return;
@@ -2386,7 +518,6 @@ export default function HomePage() {
     setLoginModalOpen(true);
   };
 
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [cloudConfigModal, setCloudConfigModal] = useState({ open: false, userId: null });
   const syncDebounceRef = useRef(null);
   const lastSyncedRef = useRef('');
@@ -2407,16 +538,7 @@ export default function HomePage() {
     userIdRef.current = user?.id || null;
   }, [user]);
 
-  const getFundCodesSignature = useCallback((value) => {
-    try {
-      const list = JSON.parse(value || '[]');
-      if (!Array.isArray(list)) return '';
-      const codes = list.map((item) => item?.code).filter(Boolean);
-      return Array.from(new Set(codes)).sort().join('|');
-    } catch (e) {
-      return '';
-    }
-  }, []);
+  // 使用从 configUtils 导入的 getFundCodesSignature
 
   const scheduleSync = useCallback(() => {
     if (!userIdRef.current) return;
@@ -2533,12 +655,12 @@ export default function HomePage() {
     setGroupModalOpen(false);
   };
 
-  const handleRemoveGroup = (id) => {
-    const next = groups.filter(g => g.id !== id);
-    setGroups(next);
-    storageHelper.setItem('groups', JSON.stringify(next));
-    if (currentTab === id) setCurrentTab('all');
-  };
+  // const handleRemoveGroup = (id) => {
+  //   const next = groups.filter(g => g.id !== id);
+  //   setGroups(next);
+  //   storageHelper.setItem('groups', JSON.stringify(next));
+  //   if (currentTab === id) setCurrentTab('all');
+  // };
 
   const handleUpdateGroups = (newGroups) => {
     setGroups(newGroups);
@@ -2595,16 +717,7 @@ export default function HomePage() {
     storageHelper.setItem('groups', JSON.stringify(next));
   };
 
-  // 按 code 去重，保留第一次出现的项，避免列表重复
-  const dedupeByCode = (list) => {
-    const seen = new Set();
-    return list.filter((f) => {
-      const c = f?.code;
-      if (!c || seen.has(c)) return false;
-      seen.add(c);
-      return true;
-    });
-  };
+  // 使用从 configUtils 导入的 dedupeByCode
 
   useEffect(() => {
     try {
@@ -2616,7 +729,7 @@ export default function HomePage() {
         const codes = Array.from(new Set(deduped.map((f) => f.code)));
         if (codes.length) refreshAll(codes);
       }
-      const savedMs = parseInt(localStorage.getItem('refreshMs') || '30000', 10);
+      const savedMs = parseInt(localStorage.getItem('refreshMs') || '300000', 10);
       if (Number.isFinite(savedMs) && savedMs >= 5000) {
         setRefreshMs(savedMs);
         setTempSeconds(Math.round(savedMs / 1000));
@@ -2657,12 +770,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setUser(null);
-      setUserMenuOpen(false);
       return;
     }
     const clearAuthState = () => {
       setUser(null);
-      setUserMenuOpen(false);
     };
 
     const handleSession = async (session, event) => {
@@ -2749,78 +860,9 @@ export default function HomePage() {
     };
   }, [user?.id]);
 
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-    setLoginSuccess('');
-    if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!loginEmail.trim()) {
-      setLoginError('请输入邮箱地址');
-      return;
-    }
-    if (!emailRegex.test(loginEmail.trim())) {
-      setLoginError('请输入有效的邮箱地址');
-      return;
-    }
-
-    setLoginLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: loginEmail.trim(),
-        options: {
-          shouldCreateUser: true
-        }
-      });
-      if (error) throw error;
-      setLoginSuccess('验证码已发送，请查收邮箱输入验证码完成注册/登录');
-    } catch (err) {
-      if (err.message?.includes('rate limit')) {
-        setLoginError('请求过于频繁，请稍后再试');
-      } else if (err.message?.includes('network')) {
-        setLoginError('网络错误，请检查网络连接');
-      } else {
-        setLoginError(err.message || '发送验证码失败，请稍后再试');
-      }
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleVerifyEmailOtp = async () => {
-    setLoginError('');
-    if (!loginOtp || loginOtp.length < 4) {
-      setLoginError('请输入邮箱中的验证码');
-      return;
-    }
-    if (!isSupabaseConfigured) {
-      showToast('未配置 Supabase，无法登录', 'error');
-      return;
-    }
-    try {
-      setLoginLoading(true);
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: loginEmail.trim(),
-        token: loginOtp.trim(),
-        type: 'email'
-      });
-      if (error) throw error;
-      if (data?.user) {
-        setLoginModalOpen(false);
-        setLoginEmail('');
-        setLoginOtp('');
-        setLoginSuccess('');
-        setLoginError('');
-        fetchCloudConfig(data.user.id);
-      }
-    } catch (err) {
-      setLoginError(err.message || '验证失败，请检查验证码或稍后再试');
-    }
-    setLoginLoading(false);
+  const handleLoginSuccess = (user) => {
+    setLoginModalOpen(false);
+    fetchCloudConfig(user.id);
   };
 
   // 登出
@@ -2828,11 +870,7 @@ export default function HomePage() {
     isLoggingOutRef.current = true;
     if (!isSupabaseConfigured) {
       setLoginModalOpen(false);
-      setLoginError('');
-      setLoginSuccess('');
-      setLoginEmail('');
-      setLoginOtp('');
-      setUserMenuOpen(false);
+      setLoginModalOpen(false);
       setUser(null);
       return;
     }
@@ -2868,39 +906,20 @@ export default function HomePage() {
         });
       } catch { }
       setLoginModalOpen(false);
-      setLoginError('');
-      setLoginSuccess('');
-      setLoginEmail('');
-      setLoginOtp('');
-      setUserMenuOpen(false);
       setUser(null);
     }
   };
 
-  // 关闭用户菜单（点击外部时）
-  const userMenuRef = useRef(null);
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
-        setUserMenuOpen(false);
-      }
-    };
-    if (userMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [userMenuOpen]);
-
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      const codes = Array.from(new Set(funds.map((f) => f.code)));
-      if (codes.length) refreshAll(codes);
-    }, refreshMs);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [funds, refreshMs]);
+  // useEffect(() => {
+  //   if (timerRef.current) clearInterval(timerRef.current);
+  //   timerRef.current = setInterval(() => {
+  //     const codes = Array.from(new Set(funds.map((f) => f.code)));
+  //     if (codes.length) refreshAll(codes);
+  //   }, refreshMs);
+  //   return () => {
+  //     if (timerRef.current) clearInterval(timerRef.current);
+  //   };
+  // }, [funds, refreshMs]);
 
   const performSearch = async (val) => {
     if (!val.trim()) {
@@ -3142,16 +1161,11 @@ export default function HomePage() {
     await refreshAll(codes);
   };
 
-  const saveSettings = (e) => {
-    e?.preventDefault?.();
-    const ms = Math.max(10, Number(tempSeconds)) * 1000;
+  const handleSaveSettings = (ms) => {
     setRefreshMs(ms);
     storageHelper.setItem('refreshMs', String(ms));
     setSettingsOpen(false);
   };
-
-  const importFileRef = useRef(null);
-  const [importMsg, setImportMsg] = useState('');
 
   const normalizeCode = (value) => String(value || '').trim();
   const normalizeNumber = (value) => {
@@ -3622,20 +1636,16 @@ export default function HomePage() {
 
         setSuccessModal({ open: true, message: '导入成功' });
         setSettingsOpen(false); // 导入成功自动关闭设置弹框
-        if (importFileRef.current) importFileRef.current.value = '';
       }
     } catch (err) {
       console.error('Import error:', err);
-      setImportMsg('导入失败，请检查文件格式');
-      setTimeout(() => setImportMsg(''), 4000);
-      if (importFileRef.current) importFileRef.current.value = '';
+      throw new Error('导入失败，请检查文件格式');
     }
   };
 
   useEffect(() => {
     const isAnyModalOpen =
       settingsOpen ||
-      feedbackOpen ||
       addResultOpen ||
       addFundToGroupOpen ||
       groupManageOpen ||
@@ -3647,10 +1657,7 @@ export default function HomePage() {
       actionModal.open ||
       tradeModal.open ||
       !!clearConfirm ||
-      donateOpen ||
-      !!fundDeleteConfirm ||
-      updateModalOpen ||
-      weChatOpen;
+      !!fundDeleteConfirm;
 
     if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -3663,7 +1670,6 @@ export default function HomePage() {
     };
   }, [
     settingsOpen,
-    feedbackOpen,
     addResultOpen,
     addFundToGroupOpen,
     groupManageOpen,
@@ -3674,10 +1680,7 @@ export default function HomePage() {
     holdingModal.open,
     actionModal.open,
     tradeModal.open,
-    clearConfirm,
-    donateOpen,
-    updateModalOpen,
-    weChatOpen
+    clearConfirm
   ]);
 
   useEffect(() => {
@@ -3698,195 +1701,26 @@ export default function HomePage() {
   return (
     <div className="container content">
       <Announcement />
-      <div className="navbar glass">
-        {refreshing && <div className="loading-bar"></div>}
-        <div className="brand">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="var(--accent)" strokeWidth="2" />
-            <path d="M5 14c2-4 7-6 14-5" stroke="var(--primary)" strokeWidth="2" />
-          </svg>
-          <span>基估宝</span>
-          <AnimatePresence>
-            {isSyncing && (
-              <motion.div
-                key="sync-icon"
-                initial={{ opacity: 0, width: 0, marginLeft: 0 }}
-                animate={{ opacity: 1, width: 'auto', marginLeft: 8 }}
-                exit={{ opacity: 0, width: 0, marginLeft: 0 }}
-                style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}
-                title="正在同步到云端..."
-              >
-                <motion.svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                >
-                  <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" stroke="var(--primary)" />
-                  <path d="M12 12v9" stroke="var(--accent)" />
-                  <path d="m16 16-4-4-4 4" stroke="var(--accent)" />
-                </motion.svg>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-        <div className="actions">
-          {hasUpdate && (
-            <div
-              className="badge"
-              title={`发现新版本 ${latestVersion}，点击前往下载`}
-              style={{ cursor: 'pointer', borderColor: 'var(--success)', color: 'var(--success)' }}
-              onClick={() => setUpdateModalOpen(true)}
-            >
-              <UpdateIcon width="14" height="14" />
-            </div>
-          )}
-          <img alt="项目Github地址" src={githubImg.src} style={{ width: '30px', height: '30px', cursor: 'pointer' }} onClick={() => window.open("https://github.com/hzm0321/real-time-fund")} />
-          <div className="badge" title="当前刷新频率">
-            <span>刷新</span>
-            <strong>{Math.round(refreshMs / 1000)}秒</strong>
-          </div>
-          <button
-            className="icon-button"
-            aria-label="立即刷新"
-            onClick={manualRefresh}
-            disabled={refreshing || funds.length === 0}
-            aria-busy={refreshing}
-            title="立即刷新"
-          >
-            <RefreshIcon className={refreshing ? 'spin' : ''} width="18" height="18" />
-          </button>
-          {/*<button*/}
-          {/*  className="icon-button"*/}
-          {/*  aria-label="打开设置"*/}
-          {/*  onClick={() => setSettingsOpen(true)}*/}
-          {/*  title="设置"*/}
-          {/*  hidden*/}
-          {/*>*/}
-          {/*  <SettingsIcon width="18" height="18" />*/}
-          {/*</button>*/}
-          {/* 用户菜单 */}
-          <div className="user-menu-container" ref={userMenuRef}>
-            <button
-              className={`icon-button user-menu-trigger ${user ? 'logged-in' : ''}`}
-              aria-label={user ? '用户菜单' : '登录'}
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              title={user ? (user.email || '用户') : '用户菜单'}
-            >
-              {user ? (
-                <div className="user-avatar-small">
-                  {userAvatar ? (
-                    <img
-                      src={userAvatar}
-                      alt="用户头像"
-                      style={{ width: '100%', height: '100%', borderRadius: '50%' }}
-                    />
-                  ) : (
-                    (user.email?.charAt(0).toUpperCase() || 'U')
-                  )}
-                </div>
-              ) : (
-                <UserIcon width="18" height="18" />
-              )}
-            </button>
-
-            <AnimatePresence>
-              {userMenuOpen && (
-                <motion.div
-                  className="user-menu-dropdown glass"
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  style={{ transformOrigin: 'top right' }}
-                >
-                  {user ? (
-                    <>
-                      <div className="user-menu-header">
-                        <div className="user-avatar-large">
-                          {userAvatar ? (
-                            <img
-                              src={userAvatar}
-                              alt="用户头像"
-                              style={{ width: '100%', height: '100%', borderRadius: '50%' }}
-                            />
-                          ) : (
-                            (user.email?.charAt(0).toUpperCase() || 'U')
-                          )}
-                        </div>
-                        <div className="user-info">
-                          <span className="user-email">{user.email}</span>
-                          <span className="user-status">已登录</span>
-                        </div>
-                      </div>
-                      <div className="user-menu-divider" />
-                      <button
-                        className="user-menu-item"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          setSettingsOpen(true);
-                        }}
-                      >
-                        <SettingsIcon width="16" height="16" />
-                        <span>设置</span>
-                      </button>
-                      <button
-                        className="user-menu-item danger"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          setLogoutConfirmOpen(true);
-                        }}
-                      >
-                        <LogoutIcon width="16" height="16" />
-                        <span>登出</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        className="user-menu-item"
-                        onClick={handleOpenLogin}
-                      >
-                        <LoginIcon width="16" height="16" />
-                        <span>登录</span>
-                      </button>
-                      <button
-                        className="user-menu-item"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          setSettingsOpen(true);
-                        }}
-                      >
-                        <SettingsIcon width="16" height="16" />
-                        <span>设置</span>
-                      </button>
-                    </>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </div>
+      <Navbar
+        refreshing={refreshing}
+        refreshMs={refreshMs}
+        fundsCount={funds.length}
+        isSyncing={isSyncing}
+        user={user}
+        userAvatar={userAvatar}
+        onRefresh={manualRefresh}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenLogin={handleOpenLogin}
+        onLogout={() => setLogoutConfirmOpen(true)}
+      />
 
       <div className="grid">
         <div className="col-12 glass card add-fund-section" role="region" aria-label="添加基金">
-          <div className="title" style={{ marginBottom: 12 }}>
-            <PlusIcon width="20" height="20" />
-            <span>添加基金</span>
-            <span className="muted">搜索并选择基金（支持名称或代码）</span>
-          </div>
 
           <div className="search-container" ref={dropdownRef}>
             <form className="form" onSubmit={addFund}>
               <div className="search-input-wrapper" style={{ flex: 1, gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                {selectedFunds.length > 0 && (
+                {/* {selectedFunds.length > 0 && (
                   <div className="selected-inline-chips">
                     {selectedFunds.map(fund => (
                       <div key={fund.CODE} className="fund-chip">
@@ -3897,7 +1731,7 @@ export default function HomePage() {
                       </div>
                     ))}
                   </div>
-                )}
+                )} */}
                 <input
                   className="input"
                   placeholder="搜索基金名称或代码..."
@@ -4144,9 +1978,9 @@ export default function HomePage() {
                     width: '100%',
                     height: '48px',
                     border: '2px dashed rgba(255,255,255,0.1)',
-                    background: 'transparent',
+                    
                     borderRadius: '12px',
-                    color: 'var(--muted)',
+                    
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -4157,16 +1991,16 @@ export default function HomePage() {
                     fontSize: '14px',
                     fontWeight: 500
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--primary)';
-                    e.currentTarget.style.color = 'var(--primary)';
-                    e.currentTarget.style.background = 'rgba(34, 211, 238, 0.05)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-                    e.currentTarget.style.color = 'var(--muted)';
-                    e.currentTarget.style.background = 'transparent';
-                  }}
+                  // onMouseEnter={(e) => {
+                  //   e.currentTarget.style.borderColor = 'var(--primary)';
+                  //   e.currentTarget.style.color = 'var(--primary)';
+                  //   e.currentTarget.style.background = 'rgba(34, 211, 238, 0.05)';
+                  // }}
+                  // onMouseLeave={(e) => {
+                  //   e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  //   e.currentTarget.style.color = 'var(--muted)';
+                  //   e.currentTarget.style.background = 'transparent';
+                  // }}
                 >
                   <PlusIcon width="18" height="18" />
                   <span>添加基金到此分组</span>
@@ -4182,7 +2016,7 @@ export default function HomePage() {
                   transition={{ duration: 0.2 }}
                   className={viewMode === 'card' ? 'grid' : 'table-container glass'}
                 >
-                  <div className={viewMode === 'card' ? 'grid col-12' : ''} style={viewMode === 'card' ? { gridColumn: 'span 12', gap: 16 } : {}}>
+                  <div className={viewMode === 'card' ? 'grid col-12 masonry' : ''} style={viewMode === 'card' ? {} : {}}>
                     {viewMode === 'list' && (
                       <div className="table-header-row">
                         <div className="table-header-cell">基金名称</div>
@@ -4198,7 +2032,6 @@ export default function HomePage() {
                     <AnimatePresence mode="popLayout">
                       {displayFunds.map((f) => (
                         <motion.div
-                          layout="position"
                           key={f.code}
                           className={viewMode === 'card' ? 'col-6' : 'table-row-wrapper'}
                           initial={{ opacity: 0, scale: 0.95 }}
@@ -4370,7 +2203,7 @@ export default function HomePage() {
                                         onClick={(e) => { e.stopPropagation(); setHoldingModal({ open: true, fund: f }); }}
                                       >
                                         <span className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '12px', cursor: 'pointer' }}>
-                                          未设置 <SettingsIcon width="12" height="12" />
+                                          未设置 <SettingsIcon width="18" height="18" />
                                         </span>
                                       </div>
                                     );
@@ -4561,7 +2394,7 @@ export default function HomePage() {
                                             style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
                                             onClick={() => setHoldingModal({ open: true, fund: f })}
                                           >
-                                            未设置 <SettingsIcon width="12" height="12" />
+                                            未设置 <SettingsIcon width="18" height="18" />
                                           </div>
                                         </div>
                                       );
@@ -4575,7 +2408,7 @@ export default function HomePage() {
                                           onClick={() => setActionModal({ open: true, fund: f })}
                                         >
                                           <span className="label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            持仓金额 <SettingsIcon width="12" height="12" style={{ opacity: 0.7 }} />
+                                            持仓金额 <SettingsIcon width="18" height="18" style={{ opacity: 0.7 }} />
                                           </span>
                                           <span className="value">¥{profit.amount.toFixed(2)}</span>
                                         </div>
@@ -4712,67 +2545,8 @@ export default function HomePage() {
       </AnimatePresence>
 
       <div className="footer">
-        <p style={{ marginBottom: 8 }}>数据源：实时估值与重仓直连东方财富，仅供个人学习及参考使用。数据可能存在延迟，不作为任何投资建议</p>
-        <p style={{ marginBottom: 12 }}>注：估算数据与真实结算数据会有1%左右误差，非股票型基金误差较大</p>
-        <div style={{ marginTop: 12, opacity: 0.8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          <p style={{ margin: 0 }}>
-            遇到任何问题或需求建议可
-            <button
-              className="link-button"
-              onClick={() => {
-                setFeedbackNonce((n) => n + 1);
-                setFeedbackOpen(true);
-              }}
-              style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: '0 4px', textDecoration: 'underline', fontSize: 'inherit', fontWeight: 600 }}
-            >
-              点此提交反馈
-            </button>
-          </p>
-          <button
-            onClick={() => setDonateOpen(true)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--muted)',
-              fontSize: '12px',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              borderRadius: '6px',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--primary)';
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--muted)';
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <span>☕</span>
-            <span>点此请作者喝杯咖啡</span>
-          </button>
-        </div>
       </div>
 
-      <AnimatePresence>
-        {feedbackOpen && (
-          <FeedbackModal
-            key={feedbackNonce}
-            onClose={() => setFeedbackOpen(false)}
-            user={user}
-            onOpenWeChat={() => setWeChatOpen(true)}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {weChatOpen && (
-            <WeChatModal onClose={() => setWeChatOpen(false)} />
-        )}
-      </AnimatePresence>
       <AnimatePresence>
         {addResultOpen && (
           <AddResultModal
@@ -4848,38 +2622,6 @@ export default function HomePage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {donateOpen && (
-          <div className="modal-overlay" onClick={() => setDonateOpen(false)}>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="glass card modal"
-              style={{ maxWidth: '360px' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="title" style={{ marginBottom: 20, justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span>☕ 请作者喝杯咖啡</span>
-                </div>
-                <button className="icon-button" onClick={() => setDonateOpen(false)} style={{ border: 'none', background: 'transparent' }}>
-                  <CloseIcon width="20" height="20" />
-                </button>
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <DonateTabs />
-              </div>
-
-              <div className="muted" style={{ fontSize: '12px', textAlign: 'center', lineHeight: 1.5 }}>
-                感谢您的支持！您的鼓励是我持续维护和更新的动力。
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {groupManageOpen && (
           <GroupManageModal
             groups={groups}
@@ -4922,282 +2664,27 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {settingsOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="设置" onClick={() => setSettingsOpen(false)}>
-          <div className="glass card modal" onClick={(e) => e.stopPropagation()}>
-            <div className="title" style={{ marginBottom: 12 }}>
-              <SettingsIcon width="20" height="20" />
-              <span>设置</span>
-              <span className="muted">配置刷新频率</span>
-            </div>
+      <SettingsModal
+        isOpen={settingsOpen}
+        refreshMs={refreshMs}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSaveSettings}
+        onExport={exportLocalData}
+        onImport={handleImportFileChange}
+      />
 
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>刷新频率</div>
-              <div className="chips" style={{ marginBottom: 12 }}>
-                {[10, 30, 60, 120, 300].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`chip ${tempSeconds === s ? 'active' : ''}`}
-                    onClick={() => setTempSeconds(s)}
-                    aria-pressed={tempSeconds === s}
-                  >
-                    {s} 秒
-                  </button>
-                ))}
-              </div>
-              <input
-                className="input"
-                type="number"
-                min="10"
-                step="5"
-                value={tempSeconds}
-                onChange={(e) => setTempSeconds(Number(e.target.value))}
-                placeholder="自定义秒数"
-              />
-              {tempSeconds < 10 && (
-                <div className="error-text" style={{ marginTop: 8 }}>
-                  最小 10 秒
-                </div>
-              )}
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>数据导出</div>
-              <div className="row" style={{ gap: 8 }}>
-                <button type="button" className="button" onClick={exportLocalData}>导出配置</button>
-              </div>
-              <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem', marginTop: 26 }}>数据导入</div>
-              <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <button type="button" className="button" onClick={() => importFileRef.current?.click?.()}>导入配置</button>
-              </div>
-              <input
-                ref={importFileRef}
-                type="file"
-                accept="application/json"
-                style={{ display: 'none' }}
-                onChange={handleImportFileChange}
-              />
-              {importMsg && (
-                <div className="muted" style={{ marginTop: 8 }}>
-                  {importMsg}
-                </div>
-              )}
-            </div>
-
-            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 24 }}>
-              <button className="button" onClick={saveSettings} disabled={tempSeconds < 10}>保存并关闭</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 更新提示弹窗 */}
-      <AnimatePresence>
-        {updateModalOpen && (
-          <motion.div
-            className="modal-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label="更新提示"
-            onClick={() => setUpdateModalOpen(false)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ zIndex: 10002 }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="glass card modal"
-              style={{ maxWidth: '400px' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="title" style={{ marginBottom: 12 }}>
-                <UpdateIcon width="20" height="20" style={{color: 'var(--success)'}} />
-                <span>更新提示</span>
-              </div>
-              <div style={{ marginBottom: 24 }}>
-                <p className="muted" style={{ fontSize: '14px', lineHeight: '1.6', marginBottom: 12 }}>
-                  检测到新版本，是否刷新浏览器以更新？
-                  <br/>
-                  更新内容如下：
-                </p>
-                {updateContent && (
-                  <div style={{
-                    background: 'rgba(0,0,0,0.2)',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    fontSize: '13px',
-                    lineHeight: '1.5',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    whiteSpace: 'pre-wrap',
-                    border: '1px solid rgba(255,255,255,0.1)'
-                  }}>
-                    {updateContent}
-                  </div>
-                )}
-              </div>
-              <div className="row" style={{ gap: 12 }}>
-                <button
-                  className="button secondary"
-                  onClick={() => setUpdateModalOpen(false)}
-                  style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: 'var(--text)' }}
-                >
-                  取消
-                </button>
-                <button
-                  className="button"
-                  onClick={() => window.location.reload()}
-                  style={{ flex: 1, background: 'var(--success)', color: '#fff', border: 'none' }}
-                >
-                  刷新浏览器
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* 更新提示弹窗 - 默认禁用，需要时启用 */}
+      <UpdateModal enabled={false} />
+      
       {/* 登录模态框 */}
-      {loginModalOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="登录"
-          onClick={() => {
-            setLoginModalOpen(false);
-            setLoginError('');
-            setLoginSuccess('');
-            setLoginEmail('');
-          }}
-        >
-          <div className="glass card modal login-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="title" style={{ marginBottom: 16 }}>
-              <MailIcon width="20" height="20" />
-              <span>邮箱登录</span>
-              <span className="muted">使用邮箱验证登录</span>
-            </div>
-
-            <form onSubmit={handleSendOtp}>
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>
-                  请输入邮箱，我们将发送验证码到您的邮箱
-                </div>
-                <input
-                  style={{width: '100%'}}
-                  className="input"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  disabled={loginLoading || !!loginSuccess}
-                />
-              </div>
-
-              {loginSuccess && (
-                <div className="login-message success" style={{ marginBottom: 12 }}>
-                  <span>{loginSuccess}</span>
-                </div>
-              )}
-
-              {loginSuccess && (
-                <div className="form-group" style={{ marginBottom: 16 }}>
-                  <div className="muted" style={{ marginBottom: 8, fontSize: '0.8rem' }}>
-                    请输入邮箱验证码以完成注册/登录
-                  </div>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="输入验证码"
-                    value={loginOtp}
-                    onChange={(e) => setLoginOtp(e.target.value)}
-                    disabled={loginLoading}
-                    maxLength={6}
-                  />
-                </div>
-              )}
-              {loginError && (
-                <div className="login-message error" style={{ marginBottom: 12 }}>
-                  <span>{loginError}</span>
-                </div>
-              )}
-              <div className="row" style={{ justifyContent: 'flex-end', gap: 12 }}>
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={() => {
-                    setLoginModalOpen(false);
-                    setLoginError('');
-                    setLoginSuccess('');
-                    setLoginEmail('');
-                    setLoginOtp('');
-                  }}
-                  disabled={loginLoading}
-                >
-                  取消
-                </button>
-                <button
-                  className="button"
-                  type={loginSuccess ? 'button' : 'submit'}
-                  onClick={loginSuccess ? handleVerifyEmailOtp : undefined}
-                  disabled={loginLoading || (loginSuccess && !loginOtp)}
-                >
-                  {loginLoading ? '处理中...' : loginSuccess ? '确认验证码' : '发送邮箱验证码'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <LoginModal
+        isOpen={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
 
       {/* 全局轻提示 Toast */}
-      <AnimatePresence>
-        {toast.show && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -20, x: '-50%' }}
-            style={{
-              position: 'fixed',
-              top: 24,
-              left: '50%',
-              zIndex: 9999,
-              padding: '10px 20px',
-              background: toast.type === 'error' ? 'rgba(239, 68, 68, 0.9)' :
-                          toast.type === 'success' ? 'rgba(34, 197, 94, 0.9)' :
-                          'rgba(30, 41, 59, 0.9)',
-              color: '#fff',
-              borderRadius: '8px',
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              fontSize: '14px',
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              maxWidth: '90vw',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {toast.type === 'error' && (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            )}
-            {toast.type === 'success' && (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-            {toast.message}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Toast toast={toast} />
     </div>
   );
 }

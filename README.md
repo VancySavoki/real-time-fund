@@ -1,7 +1,22 @@
 # 实时基金估值 (Real-time Fund Valuation)
 
 一个基于 Next.js 开发的纯前端基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
-预览地址：[https://hzm0321.github.io/real-time-fund/](https://hzm0321.github.io/real-time-fund/)
+
+访问地址：https://vancysavoki.github.io/real-time-fund/
+
+在原作[https://github.com/hzm0321/real-time-fund.git]的基础上，修改了以下内容
+
+- **视觉风格**: 从原有的科幻风格改为了现代简约灰白风格
+- **瀑布流布局**: 基金卡片支持瀑布流布局
+- **代码重构和拆分**: 将主页面逻辑陆续拆分成了多个组件，提升可维护性
+- **暂不支持**用户登录
+
+PC 端效果
+![](docs/main.png)
+
+移动端效果
+![](docs/mobile.png)
+
 
 ## ✨ 特性
 
@@ -114,12 +129,6 @@ docker compose up -d
 3. **调整频率**：点击右上角“设置”图标，可调整自动刷新的间隔时间。
 4. **删除基金**：点击卡片右上角的红色删除图标即可移除。
 
-## 💬 开发者交流群
-
-欢迎基金实时开发者加入微信群聊讨论开发与协作：  
-
-微信开发群人数已满200，如需加入请加微信号 `hzm1998hzm` 。加v备注：`基估宝开发`，邀请入群。
-
 ## 📝 免责声明
 
 本项目所有数据均来自公开接口，仅供个人学习及参考使用。数据可能存在延迟，不作为任何投资建议。
@@ -135,4 +144,4 @@ docker compose up -d
 完整协议文本见仓库根目录 [LICENSE](./LICENSE) 文件，或 [GNU AGPL v3 官方说明](https://www.gnu.org/licenses/agpl-3.0.html)。
 
 ---
-Made by [hzm](https://github.com/hzm0321)
+感谢原作者的无私分享 [hzm](https://github.com/hzm0321)
