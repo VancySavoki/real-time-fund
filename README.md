@@ -1,5 +1,7 @@
 # 实时基金估值 (Real-time Fund Valuation)
 
+---
+
 一个基于 Next.js 开发的纯前端基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配。
 
 访问地址：https://vancysavoki.github.io/real-time-fund/
@@ -9,10 +11,12 @@
 - **视觉风格**: 从原有的科幻风格改为了现代简约灰白风格
 - **瀑布流布局**: 基金卡片支持瀑布流布局
 - **代码重构和拆分**: 将主页面逻辑陆续拆分成了多个组件，提升可维护性
-- **暂不支持**用户登录
+- **添加智能助手咕宝**
+
+![](app/assets/gubao.svg)
 
 PC 端效果
-![](docs/main.png)
+![](docs/gubao.png)
 
 移动端效果
 ![](docs/mobile.png)
