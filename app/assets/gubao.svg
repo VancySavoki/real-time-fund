@@ -1,0 +1,149 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 身体渐变：营造球体感 -->
+    <radialGradient id="bodyBlue" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#81D4FA;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#4FC3F7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#29B6F6;stop-opacity:1" />
+    </radialGradient>
+    <!-- 腮红渐变 -->
+    <radialGradient id="blushGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FF8A80;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#FF8A80;stop-opacity:0" />
+    </radialGradient>
+    <!-- 阴影滤镜 -->
+    <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="0" dy="6" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.15"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="offsetblur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 整体动画组：呼吸式悬浮 -->
+  <g class="float-wrapper">
+    <!-- 左脚 -->
+    <ellipse class="foot" cx="75" cy="168" rx="18" ry="12" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5"/>
+    <!-- 右脚 -->
+    <ellipse class="foot" cx="125" cy="168" rx="18" ry="12" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5"/>
+    <!-- 身体主体：略带水滴形 -->
+    <path d="M 100 35 
+             C 140 35, 162 65, 165 105 
+             C 168 145, 145 165, 100 165 
+             C 55 165, 32 145, 35 105 
+             C 38 65, 60 35, 100 35 Z" 
+          fill="url(#bodyBlue)" 
+          stroke="#1565C0" 
+          stroke-width="3"
+          filter="url(#softShadow)"/>
+    <!-- 脸部白色区域 -->
+    <ellipse cx="100" cy="110" rx="48" ry="42" fill="#FFFFFF" opacity="0.95"/>
+    <!-- 左手 -->
+    <g class="arm-left" transform-origin="40 110">
+      <ellipse cx="40" cy="110" rx="14" ry="22" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5" transform="rotate(25, 40, 110)"/>
+    </g>
+    <!-- 右手 -->
+    <g class="arm-right" transform-origin="160 110">
+      <ellipse cx="160" cy="110" rx="14" ry="22" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5" transform="rotate(-25, 160, 110)"/>
+    </g>
+    <!-- 头顶卷毛 -->
+    <g class="hair" transform-origin="100 40">
+      <path d="M 100 40 Q 105 25 100 18 Q 95 12 100 8 Q 105 4 110 10" 
+            fill="none" 
+            stroke="#1565C0" 
+            stroke-width="4" 
+            stroke-linecap="round"/>
+      <circle cx="110" cy="10" r="5" fill="#4FC3F7" stroke="#1565C0" stroke-width="2"/>
+    </g>
+    <!-- 眼睛组 -->
+    <g id="eyes">
+      <!-- 左眼 -->
+      <g transform="translate(78, 95)">
+        <ellipse class="eye-white" rx="14" ry="16" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="0.5"/>
+        <circle class="pupil" r="9" fill="#263238"/>
+        <circle r="6" fill="#000000"/>
+        <circle r="3.5" cx="3" cy="-3" fill="#FFFFFF" opacity="0.9"/>
+        <!-- 眨眼遮罩 -->
+        <path class="eyelid" d="M -14 0 Q 0 -18 14 0" fill="#4FC3F7" stroke="#1565C0" stroke-width="2" style="display:none;"/>
+      </g>
+      <!-- 右眼 -->
+      <g transform="translate(122, 95)">
+        <ellipse class="eye-white" rx="14" ry="16" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="0.5"/>
+        <circle class="pupil" r="9" fill="#263238"/>
+        <circle r="6" fill="#000000"/>
+        <circle r="3.5" cx="3" cy="-3" fill="#FFFFFF" opacity="0.9"/>
+        <!-- 眨眼遮罩 -->
+        <path class="eyelid" d="M -14 0 Q 0 -18 14 0" fill="#4FC3F7" stroke="#1565C0" stroke-width="2" style="display:none;"/>
+      </g>
+    </g>
+    <!-- 腮红 -->
+    <ellipse cx="60" cy="120" rx="10" ry="6" fill="url(#blushGrad)"/>
+    <ellipse cx="140" cy="120" rx="10" ry="6" fill="url(#blushGrad)"/>
+    <!-- 嘴巴：微笑 -->
+    <path d="M 92 125 Q 100 132 108 125" 
+          fill="none" 
+          stroke="#1565C0" 
+          stroke-width="2.5" 
+          stroke-linecap="round"/>
+    <!-- 高光：增加立体感 -->
+    <ellipse cx="75" cy="65" rx="20" ry="12" fill="#FFFFFF" opacity="0.3" transform="rotate(-45, 75, 65)"/>
+  </g>
+  <style>
+    /* 整体悬浮动画 - 呼吸感 */
+    .float-wrapper {
+      animation: float 3s ease-in-out infinite;
+      transform-origin: center bottom;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-5px) scale(1.02); }
+    }
+    /* 手臂轻微摆动 */
+    .arm-left {
+      animation: waveLeft 2.5s ease-in-out infinite;
+    }
+    @keyframes waveLeft {
+      0%, 100% { transform: rotate(25deg); }
+      50% { transform: rotate(35deg); }
+    }
+    .arm-right {
+      animation: waveRight 2.5s ease-in-out infinite;
+      animation-delay: 0.5s;
+    }
+    @keyframes waveRight {
+      0%, 100% { transform: rotate(-25deg); }
+      50% { transform: rotate(-35deg); }
+    }
+    /* 卷毛摇摆 */
+    .hair {
+      animation: hairWiggle 3s ease-in-out infinite;
+    }
+    @keyframes hairWiggle {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(5deg); }
+      75% { transform: rotate(-3deg); }
+    }
+    /* 眨眼动画 - 使用 display 切换 */
+    .eye-white, .pupil {
+      animation: blink 4s infinite;
+    }
+    @keyframes blink {
+      0%, 96%, 100% { opacity: 1; }
+      98% { opacity: 0.1; } /* 快速闭眼 */
+    }
+    /* 瞳孔轻微移动 - 生动感 */
+    .pupil {
+      animation: lookAround 6s ease-in-out infinite, blink 4s infinite;
+    }
+    @keyframes lookAround {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(2px, -1px); }
+      50% { transform: translate(0, 1px); }
+      75% { transform: translate(-2px, 0); }
+    }
+  </style>
+</svg>

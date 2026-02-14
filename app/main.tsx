@@ -8,7 +8,11 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { Announcement, Stat, GroupSummary, Toast, Navbar } from "./components";
-import { ChevronIcon, CloseIcon, ExitIcon, GridIcon, ListIcon, LoginIcon, LogoutIcon, PlusIcon, RefreshIcon, SettingsIcon, SortIcon, StarIcon, TrashIcon, UserIcon } from "./components/Icons";
+import { ChevronIcon, ExitIcon, GridIcon, ListIcon, PlusIcon, SettingsIcon, SortIcon, StarIcon, TrashIcon } from "./components/Icons";
+import {
+  useDefaultTool,
+  useFrontendTool,
+} from "@copilotkit/react-core";
 import {
   HoldingActionModal,
   TradeModal,
@@ -27,16 +31,8 @@ import {
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { fetchFundData, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds } from './api/fund';
 import {
-  normalizeCode,
-  normalizeNumber,
   getFundCodesSignature,
-  dedupeByCode,
-  getComparablePayload,
-  collectLocalPayload,
-  mergeImportData,
-  exportLocalConfig,
-  validateImportData
-} from './lib/configUtils';
+  dedupeByCode} from './lib/configUtils';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -954,39 +950,6 @@ export default function HomePage() {
     });
   };
 
-  const batchAddFunds = async () => {
-    if (selectedFunds.length === 0) return;
-    setLoading(true);
-    setError('');
-
-    try {
-      const newFunds = [];
-      for (const f of selectedFunds) {
-        if (funds.some(existing => existing.code === f.CODE)) continue;
-        try {
-          const data = await fetchFundData(f.CODE);
-          newFunds.push(data);
-        } catch (e) {
-          console.error(`添加基金 ${f.CODE} 失败`, e);
-        }
-      }
-
-      if (newFunds.length > 0) {
-        const updated = dedupeByCode([...newFunds, ...funds]);
-        setFunds(updated);
-        storageHelper.setItem('funds', JSON.stringify(updated));
-      }
-
-      setSelectedFunds([]);
-      setSearchTerm('');
-      setSearchResults([]);
-    } catch (e) {
-      setError('批量添加失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const refreshAll = async (codes) => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
@@ -1697,6 +1660,60 @@ export default function HomePage() {
     const group = groups.find(g => g.id === currentTab);
     return group ? `${group.name}资产` : '分组资产';
   };
+
+  useDefaultTool({
+    render: ({ name, args, status, result }) => {
+      return (
+        <div className="p-4 border rounded my-2">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold">{name}</h4>
+            <span className="text-sm text-gray-500">
+              {status === "inProgress" && "Running..."}
+              {status === "executing" && "Executing..."}
+              {status === "complete" && "Complete"}
+            </span>
+          </div>
+          {Object.keys(args).length > 0 && (
+            <div className="mb-2">
+              <p className="text-sm font-medium text-gray-600">Parameters:</p>
+              <pre className="text-xs bg-gray-100 p-2 rounded mt-1">
+                {JSON.stringify(args, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {status === "complete" && result && (
+            <div>
+              <p className="text-sm font-medium text-gray-600">Result:</p>
+              <pre className="text-xs bg-gray-100 p-2 rounded mt-1">
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      );
+    },
+  });
+  useFrontendTool({
+    name: "get_my_holding_funds",
+    description: "获取我当前的持仓基金",
+    parameters: [{
+        name: "type",
+        type: "string",
+        description: "The type of funds to return. optional, can be 'all' or 'holding'. If 'holding', only return funds with non-zero shares. Default is 'all'.",
+        required: false,
+      }],
+    handler: async ({ type }) => {
+      // Add the new graph to the beginning of the array
+      
+      return { success: true, data: JSON.stringify(funds)};
+    },
+    render: ({ result }) => {
+  
+      return (<code><pre>{JSON.stringify(result, null, 2)}</pre></code>);
+    },
+  });
+
 
   return (
     <div className="container content">

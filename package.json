@@ -3,11 +3,16 @@
   "version": "0.1.5",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NODE_ENV=development next dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
+    "tailwindcss": "^4.1.18",
+    "@ag-ui/client": "^0.0.45",
+    "@copilotkit/react-core": "^1.51.3",
+    "@copilotkit/react-ui": "^1.51.3",
+    "@copilotkit/runtime": "^1.51.3",
     "@dicebear/collection": "^9.3.1",
     "@dicebear/core": "^9.3.1",
     "@supabase/supabase-js": "^2.78.0",
@@ -21,6 +26,9 @@
     "node": ">=20.9.0"
   },
   "devDependencies": {
-    "babel-plugin-react-compiler": "^1.0.0"
+    "@tailwindcss/postcss": "^4.1.18",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "cross-env": "^10.1.0",
+    "typescript": "5.9.3"
   }
 }

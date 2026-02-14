@@ -1,0 +1,69 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bodyBlue" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#81D4FA"/>
+      <stop offset="50%" style="stop-color:#4FC3F7"/>
+      <stop offset="100%" style="stop-color:#29B6F6"/>
+    </radialGradient>
+    <radialGradient id="blushGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FF5252;stop-opacity:0.8"/>
+      <stop offset="100%" style="stop-color:#FF5252;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+  <!-- 星星装饰 -->
+  <g opacity="0.8">
+    <path d="M 30 30 L 33 38 L 41 41 L 33 44 L 30 52 L 27 44 L 19 41 L 27 38 Z" fill="#FFD700">
+      <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 170 50 L 172 55 L 177 57 L 172 59 L 170 64 L 168 59 L 163 57 L 168 55 Z" fill="#FF6B6B">
+      <animateTransform attributeName="transform" type="rotate" from="0 170 50" to="-360 170 50" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"/>
+    </path>
+  </g>
+  <g>
+    <!-- 弹跳动画 -->
+    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-15; 0,0" dur="0.6s" repeatCount="indefinite"/>
+    <animateTransform attributeName="transform" type="scale" values="1,1; 0.95,1.05; 1,1" dur="0.6s" repeatCount="indefinite" additive="sum"/>
+    <!-- 身体 -->
+    <path d="M 100 40 C 140 40, 162 70, 165 110 C 168 150, 145 170, 100 170 C 55 170, 32 150, 35 110 C 38 70, 60 40, 100 40 Z" 
+          fill="url(#bodyBlue)" stroke="#1565C0" stroke-width="3"/>
+    <!-- 脸部 -->
+    <ellipse cx="100" cy="115" rx="48" ry="42" fill="#FFFFFF" opacity="0.95"/>
+    <!-- 手臂（欢呼举起） -->
+    <g>
+      <ellipse cx="35" cy="90" rx="12" ry="20" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5" transform="rotate(-40, 35, 90)"/>
+      <circle cx="25" cy="70" r="8" fill="#4FC3F7" stroke="#1565C0" stroke-width="2"/>
+      <ellipse cx="165" cy="90" rx="12" ry="20" fill="#4FC3F7" stroke="#1565C0" stroke-width="2.5" transform="rotate(40, 165, 90)"/>
+      <circle cx="175" cy="70" r="8" fill="#4FC3F7" stroke="#1565C0" stroke-width="2"/>
+    </g>
+    <!-- 卷毛（翘起） -->
+    <path d="M 100 45 Q 110 25 115 20 Q 120 15 115 10" fill="none" stroke="#1565C0" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="115" cy="10" r="5" fill="#FFD700" stroke="#1565C0" stroke-width="2">
+      <animate attributeName="r" values="5;7;5" dur="0.6s" repeatCount="indefinite"/>
+    </circle>
+    <!-- 眼睛（笑眼） -->
+    <g transform="translate(78, 100)">
+      <path d="M -12 0 Q 0 -12 12 0" fill="none" stroke="#263238" stroke-width="4" stroke-linecap="round"/>
+      <!-- 笑纹 -->
+      <path d="M -14 -5 Q -18 0 -14 5" fill="none" stroke="#4FC3F7" stroke-width="2" opacity="0.6"/>
+    </g>
+    <g transform="translate(122, 100)">
+      <path d="M -12 0 Q 0 -12 12 0" fill="none" stroke="#263238" stroke-width="4" stroke-linecap="round"/>
+      <path d="M 14 -5 Q 18 0 14 5" fill="none" stroke="#4FC3F7" stroke-width="2" opacity="0.6"/>
+    </g>
+    <!-- 腮红（兴奋红晕） -->
+    <ellipse cx="58" cy="115" rx="11" ry="7" fill="url(#blushGrad)"/>
+    <ellipse cx="142" cy="115" rx="11" ry="7" fill="url(#blushGrad)"/>
+    <!-- 嘴巴（大笑） -->
+    <path d="M 85 125 Q 100 145 115 125 Z" fill="#FF5252" stroke="#1565C0" stroke-width="2"/>
+    <path d="M 90 130 Q 100 135 110 130" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/> <!-- 舌头/牙齿 -->
+    <!-- 汗滴/开心符号 -->
+    <g transform="translate(160, 40)">
+      <path d="M 0 0 Q 5 10 0 15 Q -5 10 0 0" fill="#81D4FC" opacity="0">
+        <animate attributeName="opacity" values="0;1;0" dur="1s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="translate" values="0,0; 0,20" dur="1s" repeatCount="indefinite"/>
+      </path>
+    </g>
+  </g>
+</svg>
