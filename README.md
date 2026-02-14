@@ -4,7 +4,7 @@
 
 访问地址：https://vancysavoki.github.io/real-time-fund/
 
-在原作[https://github.com/hzm0321/real-time-fund.git]的基础上，修改了以下内容
+在原作[https://github.com/hzm0321/real-time-fund.git] 的基础上，修改了以下内容
 
 - **视觉风格**: 从原有的科幻风格改为了现代简约灰白风格
 - **瀑布流布局**: 基金卡片支持瀑布流布局
